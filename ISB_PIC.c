@@ -31,11 +31,15 @@
 #define CARGA 3036
 
 int1 un_segundo = 0;
+int1 comenzar_conteo = 0;
+int8 t_actual = 0;
+
 #INT_TIMER1
 void interrupcion ()
 {
    set_timer1(CARGA);
    un_segundo++;
+   if (comenzar_conteo){t_actual++;}
 }
 
 //PROTOTIPOS DE FUNCIONES
@@ -78,14 +82,15 @@ void main ()
    //Variables
    int8 start = 0;
    int8 stop = 0;
-   int8 n_prendas = 0;
+   int8 n_prendas_total = 0;
+   int8 n_prendas_actual = 0;
    int8 tiempo = 0;
    float temp = 0;
 
    while (TRUE)
    {
       
-      lectura_serial (&start, &stop, &tiempo, &n_prendas);
+      lectura_serial (&start, &stop, &tiempo, &n_prendas_total);
       if(start == 1)
       {
          output_high(RESISTENCIA); //Se enciende la resistencia
@@ -107,15 +112,25 @@ void main ()
             control_pwm (OFF); //Se apaga el motor del mecanismo giratorio
             UPDOWN (1,ARRIBA);
             UPDOWN (2,ARRIBA);
+            comenzar_conteo = 1;
             
          }
          
-         int8 t_actual = 0;
-         while (t_actual<tiempo) //Mientras 
+         lcd_gotoxy(1,1); printf(lcd_putc,"\fTIEMPO A: %i\nTIEMPO D:%i",t_actual,tiempo);
+         while (t_actual/2 < tiempo)
          {
-            if(un_segundo){t_actual++;}
+            lcd_gotoxy(10,1); printf(lcd_putc,"%i ",(int)t_actual/2);
+            lcd_gotoxy(10,2); printf(lcd_putc,"%i ",tiempo);
             revisar_fines_carrera ();
          }
+         
+         t_actual = 0;
+         comenzar_conteo = 0;
+         UPDOWN (1,PARO);
+         UPDOWN (2,PARO);
+         lcd_gotoxy(1,1); printf(lcd_putc,"\fFIN DE PLANCHADO");
+         control_pwm (ON);
+         delay_ms(1000);
          
       }//if(start == 1)
 
