@@ -4,8 +4,9 @@
 #use standard_io(B)//REVISAR ESTO, SE OCUPA AÑADIR DE LOS DEMAS PUERTOS?
 #use RS232 (BAUD=9660, BITS=8, PARITY=N, XMIT=PIN_C6, RCV=PIN_C7) //TX=C6, RX=C7
 
-#include <LCD_D.c>
-#include <DS18B20.h>
+//LIBRERÍAS
+#include <LCD_D.c> // LCD en el puerto D
+#include <DS18B20.h> // Sensor de temperatura
 
 // ENTRADAS
 #define INFRAROJO PIN_B0
@@ -19,8 +20,7 @@
 #define E1_DOWN PIN_B7
 #define E2_UP PIN_C0
 #define E2_DOWN PIN_C1
-#define RESISTENCIA PIN_C3
-
+#define RESISTENCIA PIN_C5
 
 //AUXILIARES
 #define ARRIBA 0
@@ -50,6 +50,7 @@ void start_elevadores (void);
 void UPDOWN (int8,int8);
 void control_pwm (int1);
 void lectura_serial (int8 *, int8 *, int8 *, int8 *);
+void control_temperatura (void); 
 
 
 void main ()
@@ -67,73 +68,65 @@ void main ()
    // Comenzar con los motores en PARO=========================================
    UPDOWN (1,PARO);
    UPDOWN (2,PARO);
+   lcd_putc('\f');
    
    //Set del módulo CCP para pwm del motor del mecanismo ======================
    setup_timer_2(t2_div_by_4,249,1);
    setup_ccp1(ccp_pwm);
    set_pwm1_duty(0);
    
-   //Set de las interrupciones (Timer 1)=======================================
+   //Set de las interrupciones (Timer 1 - 0.5s)================================
    setup_timer_1(T1_INTERNAL|T1_DIV_BY_8 ); //Contador asíncrono con prescaler de 1
    enable_interrupts (INT_TIMER1);
    enable_interrupts (GLOBAL);
    set_timer1(CARGA);
    
    //Variables
-   int8 start = 0;
-   int8 stop = 0;
-   int8 n_prendas_total = 0;
-   int8 n_prendas_actual = 0;
-   int8 tiempo = 0;
-   float temp = 0;
+   int8 start = 0; //Viene de LABVIEW, boton de INICIO
+   int8 stop = 0; //Viene de LABVIEW, boton PARO DE EMERGENCIA
+   int8 n_prendas_total = 0; // #Prendas colocadas por el usuario
+   int8 n_prendas_actual = 0; // #Prendas ya planchadas
+   int8 tiempo = 0; // Tiempo de planchado por prenda deseado
 
    while (TRUE)
    {
-      
       lectura_serial (&start, &stop, &tiempo, &n_prendas_total);
       if(start == 1)
       {
-         output_high(RESISTENCIA); //Se enciende la resistencia
-         while (temp <= 100) //Cada segundo, mide e imprime la temperatura
+         control_temperatura();
+         while(n_prendas_actual < n_prendas_total)
          {
-            if (un_segundo)
+            if  (input(INFRAROJO)== 0) 
             {
-               temp = medir_temperatura();
-               lcd_gotoxy(1,1); printf(lcd_putc,"Calentando...");
-            }
-            
-         }
-         
-         output_low(RESISTENCIA); //Apaga la resistencia
-         if  (input(INFRAROJO)== 0) 
-         {
-            control_pwm (ON); //Se enciende el motor del mecanismo giratorio
-            while (input(INFRAROJO)== 0);//Si no hay prenda detectada no hace NADA ******Agregar mantenimiento de temperatura******
-            control_pwm (OFF); //Se apaga el motor del mecanismo giratorio
-            UPDOWN (1,ARRIBA);
-            UPDOWN (2,ARRIBA);
-            comenzar_conteo = 1;
-            
-         }
-         
-         lcd_gotoxy(1,1); printf(lcd_putc,"\fTIEMPO A: %i\nTIEMPO D:%i",t_actual,tiempo);
-         while (t_actual/2 < tiempo)
-         {
-            lcd_gotoxy(10,1); printf(lcd_putc,"%i ",(int)t_actual/2);
-            lcd_gotoxy(10,2); printf(lcd_putc,"%i ",tiempo);
-            revisar_fines_carrera ();
-         }
-         
-         t_actual = 0;
-         comenzar_conteo = 0;
-         UPDOWN (1,PARO);
-         UPDOWN (2,PARO);
-         lcd_gotoxy(1,1); printf(lcd_putc,"\fFIN DE PLANCHADO");
-         control_pwm (ON);
-         delay_ms(1000);
+               control_pwm (ON); //Se enciende el motor del mecanismo giratorio
+               while (input(INFRAROJO)== 0);//Si no hay prenda detectada no hace NADA ******Agregar mantenimiento de temperatura******
+               control_pwm (OFF); //Se apaga el motor del mecanismo giratorio
+               UPDOWN (1,ARRIBA);
+               UPDOWN (2,ARRIBA);
+               comenzar_conteo = 1;
+               lcd_gotoxy(1,1); printf(lcd_putc,"\fTIEMPO A: %i\nTIEMPO D:%i",t_actual,tiempo);
+               while (t_actual/2 < tiempo)
+               {
+                  lcd_gotoxy(10,1); printf(lcd_putc,"%i ",(int)t_actual/2);
+                  lcd_gotoxy(10,2); printf(lcd_putc,"%i ",tiempo);
+                  revisar_fines_carrera ();
+               }
+               t_actual = 0;
+               comenzar_conteo = 0;
+               UPDOWN (1,PARO);
+               UPDOWN (2,PARO);
+               n_prendas_actual++;
+               lcd_gotoxy(1,1); printf(lcd_putc,"\fFIN DE PLANCHADO\nPRENDA: %i",n_prendas_actual);
+               delay_ms(1000); //La prenda avanza un poquito para ya no ser detectada por el infrarojo
+               control_temperatura();
+               control_pwm (ON);
+            }//if  (input(INFRAROJO)== 0) 
+         }//while(n_prendas_actual < n_prendas_total)
+         n_prendas_actual = 0;
+         lcd_gotoxy(1,1); printf(lcd_putc,"\fEJECUTE PRENDAS = 0");
+         delay_ms(5000);
          
       }//if(start == 1)
-
    } //while (TRUE)
 } 
 
@@ -241,7 +234,7 @@ void lectura_serial (int8 *inicio_flag, int8 *paro_flag, int8 *tiempo, int8 *pre
          *inicio_flag = 1;
          *paro_flag = 0;
          *tiempo = 10;
-         *prendas = 5;
+         *prendas = 4;
          
 //!         while (!kbhit);
 //!         
@@ -264,4 +257,19 @@ void lectura_serial (int8 *inicio_flag, int8 *paro_flag, int8 *tiempo, int8 *pre
 //!            break;
 //!         }
       
+}
+
+void control_temperatura () 
+{
+   float temp = medir_temperatura();
+   if (temp <= 100) {output_high(RESISTENCIA);} //Se enciende la resistencia
+   while (temp <= 100) //Cada segundo, mide e imprime la temperatura
+   {
+      if (un_segundo)
+      {
+         temp = medir_temperatura();
+         lcd_gotoxy(1,1); printf(lcd_putc,"Calentando...");
+      }
+   }
+   output_low(RESISTENCIA); //Apaga la resistencia
 }
