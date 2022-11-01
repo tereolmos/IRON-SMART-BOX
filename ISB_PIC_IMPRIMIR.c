@@ -12,14 +12,10 @@
 #define INFRAROJO PIN_B0
 #define FIN_E1_UP PIN_B2
 #define FIN_E1_DOWN PIN_B3
-#define FIN_E2_UP PIN_B4// inecesario
-#define FIN_E2_DOWN PIN_B5 // inecesario
 
 //SALIDAS
 #define E1_UP PIN_B6
 #define E1_DOWN PIN_B7
-#define E2_UP PIN_C0 // inecesario
-#define E2_DOWN PIN_C1 // inecesario
 #define RESISTENCIA PIN_C5
 
 //AUXILIARES
@@ -45,17 +41,26 @@ void interrupcion ()
 
 //PROTOTIPOS DE FUNCIONES
 float medir_temperatura(void);
-void control_temperatura (void); 
-void revisar_fines_carrera (void);
-void start_elevadores (void);
-void UPDOWN (int8,int8);
-void control_pwm (int1);
+void control_temperatura (int8 *, int8 *);
+void revisar_fines_carrera (int8 *);
+void UPDOWN (int8, int8 *);
+void control_pwm (int1, int8 *);
 void lectura_serial (int8 *, int8 *, int8 *, int8 *);
 
 
 
 void main ()
 {
+   //Variables
+   int8 start = 0; //Viene de LABVIEW, boton de INICIO
+   int8 stop = 0; //Viene de LABVIEW, boton PARO DE EMERGENCIA
+   int8 n_prendas_total = 0; // #Prendas colocadas por el usuario
+   int8 n_prendas_actual = 0; // #Prendas ya planchadas
+   int8 tiempo = 0; // Tiempo de planchado por prenda deseado
+   //int inicializado = 0; // Bandera para el control de la temperatura (solo se usa al inicio), revisar si se necesita, que el while de control se rompa cuando detecta un objeto solo cuando inicializado = 1
+   int8 flag_motor_mec = 0; // Bandera estado del motor del mecanismo
+   int8 flag_motor_elev = 0; // Bandera estado del motor del elevador
+   
    // Imprimir título del proyecto=============================================
    lcd_init();
    lcd_putc('\f');
@@ -67,7 +72,7 @@ void main ()
    lcd_putc('\f');
    
    // Comenzar con los motores en PARO=========================================
-   UPDOWN (1,PARO);
+   UPDOWN (PARO, &flag_motor_elev);
    lcd_putc('\f');
    
    //Set del módulo CCP para pwm del motor del mecanismo ======================
@@ -81,55 +86,50 @@ void main ()
    enable_interrupts (GLOBAL);
    set_timer1(CARGA);
    
-   //Variables
-   int8 start = 0; //Viene de LABVIEW, boton de INICIO
-   int8 stop = 0; //Viene de LABVIEW, boton PARO DE EMERGENCIA
-   int8 n_prendas_total = 0; // #Prendas colocadas por el usuario
-   int8 n_prendas_actual = 0; // #Prendas ya planchadas
-   int8 tiempo = 0; // Tiempo de planchado por prenda deseado
-
+   
    while (TRUE)
    {
-      lectura_serial (&start, &stop, &tiempo, &n_prendas_total);
-      if(start == 1)
+      lectura_serial (&start, &stop, &tiempo, &n_prendas_total);//Realizar la lectura desde labview
+      if(start == 1) // Si se presionó el botón de inicio
       {
-         control_temperatura();
+         control_temperatura (&flag_motor_mec, &flag_motor_elev); // Se realiza la medicion de temperatura cada segundo hasta llegar al set point 
          while(n_prendas_actual < n_prendas_total)
          {
             lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
             if  (input(INFRAROJO)== 1)//No hay prenda detectada
             {
                lcd_gotoxy(1,2); printf(lcd_putc,"P:0");
-               control_pwm (ON); //Se enciende el motor del mecanismo giratorio
-               while (input(INFRAROJO)== 1);//Si no hay prenda detectada no hace NADA ******Agregar mantenimiento de temperatura******=================
+               control_pwm (ON, &flag_motor_mec); //Se enciende el motor del mecanismo giratorio
+               while (input(INFRAROJO)== 1) //Mientras no haya prenda detectada, solo se encarga de mantener la temperatura
+               {
+                  control_temperatura (&flag_motor_mec, &flag_motor_elev);
+               }
                lcd_gotoxy(1,2); printf(lcd_putc,"P:1");// el ciclo se rompe cuando detecta la pieza 
-               control_pwm (OFF); //Se apaga el motor del mecanismo giratorio
-               UPDOWN (1,ARRIBA);
+               control_pwm (OFF, &flag_motor_mec); //Se apaga el motor del mecanismo giratorio
+               UPDOWN (ARRIBA, &flag_motor_elev);
                comenzar_conteo = 1;
        
                while (t_actual/2 < tiempo)
                {
                   lcd_gotoxy(16,2); printf(lcd_putc,"%i ",(int)t_actual/2);
-                  revisar_fines_carrera ();
+                  revisar_fines_carrera (&flag_motor_elev);
+                  control_temperatura (&flag_motor_mec, &flag_motor_elev);
+                  //agregar mantenimiento de temperatura?
                }
-               
-               UPDOWN (1,PARO);
+               UPDOWN (PARO, &flag_motor_elev);
                //Agregar que regresen a la posicion inicial=============================================================================================
                t_actual = 0;
                comenzar_conteo = 0;
                n_prendas_actual++;
                //lcd_gotoxy(1,1); printf(lcd_putc,"\fFIN DE PLANCHADO\nPRENDA: %i",n_prendas_actual);
                lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
-               delay_ms(1000); //La prenda avanza un poquito para ya no ser detectada por el infrarojo
-               control_temperatura();
-               control_pwm (ON);
+               delay_ms(1000); //La prenda avanza un poquito para ya no ser detectada por el infrarojo==================================================
+               control_temperatura (&flag_motor_mec, &flag_motor_elev);
+               control_pwm (ON, &flag_motor_mec);
             }//if  (input(INFRAROJO)== 0) 
          }//while(n_prendas_actual < n_prendas_total)
          n_prendas_actual = 0;
          lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
-         
-         
-         
       }//if(start == 1)
    } //while (TRUE)
 } 
@@ -156,7 +156,7 @@ float medir_temperatura()
    return temp;
 }
 
-void control_temperatura () 
+void control_temperatura (int8 *flag_motor_mec, int8 *flag_motor_elev) 
 {
    float temp = medir_temperatura();
    if (temp <= TEM_DESEADA) {output_high(RESISTENCIA); lcd_gotoxy(14,1); printf(lcd_putc,"R:1");} //Se enciende la resistencia
@@ -167,95 +167,57 @@ void control_temperatura ()
          temp = medir_temperatura();
          lcd_gotoxy(14,1); printf(lcd_putc,"R:1");
       }
+      if (input(INFRAROJO)== 0 && *flag_motor_mec==1) //Si se detectó un objeto y está funcionando el motor del mecanismo
+      {  
+         break;      
+      }
+      if ((input(FIN_E1_UP) == 0 || input(FIN_E1_DOWN) == 0) && *flag_motor_elev==1) //Si el elevador llegó hasta arriba o hasta abajo y está funcionando el elevador***********
+      {  
+         break;      
+      }
    }
    output_low(RESISTENCIA); //Apaga la resistencia
    lcd_gotoxy(14,1); printf(lcd_putc,"R:0");
 }
 
-void revisar_fines_carrera ()
+void revisar_fines_carrera (int8 *flag_motor_elev)
 {
-   //ELEVADOR 1
-   if (input(FIN_E1_UP) == 0){UPDOWN (1,PARO); delay_ms(500); UPDOWN (1,ABAJO);lcd_gotoxy(5,2); printf(lcd_putc,"U:1");}
+   if (input(FIN_E1_UP) == 0){UPDOWN (PARO, flag_motor_elev); delay_ms(500); UPDOWN (ABAJO, flag_motor_elev);lcd_gotoxy(5,2); printf(lcd_putc,"U:1");}
    else if (input(FIN_E1_UP) == 1){lcd_gotoxy(5,2); printf(lcd_putc,"U:0");}
-   if (input(FIN_E1_DOWN) == 0){UPDOWN (1,PARO); delay_ms(500); UPDOWN (1,ARRIBA);lcd_gotoxy(9,2); printf(lcd_putc,"D:1");}
+   if (input(FIN_E1_DOWN) == 0){UPDOWN (PARO, flag_motor_elev); delay_ms(500); UPDOWN (ARRIBA, flag_motor_elev);lcd_gotoxy(9,2); printf(lcd_putc,"D:1");}
    else if (input(FIN_E1_DOWN) == 1){lcd_gotoxy(9,2); printf(lcd_putc,"D:0");}
 }
 
-void start_elevadores ()
+void UPDOWN (int8 sentido, int8 *flag_motor_elev)
 {
-   if (input(FIN_E1_UP) == 0 && input(FIN_E1_DOWN) == 0){UPDOWN (1,ARRIBA);}
+   if (sentido == ARRIBA){output_high(E1_UP); output_low(E1_DOWN); *flag_motor_elev = 1; lcd_gotoxy(10,1); printf(lcd_putc,"M:U");}
+   else if (sentido == ABAJO) {output_high(E1_DOWN); output_low(E1_UP); *flag_motor_elev = 1; lcd_gotoxy(10,1); printf(lcd_putc,"M:D");}
+   else if (sentido == PARO) {output_low(E1_DOWN); output_low(E1_UP); *flag_motor_elev = 0; lcd_gotoxy(10,1); printf(lcd_putc,"M:P");}
 }
 
-void UPDOWN (int8 motor,int8 sentido)
-
-{
-   switch (motor)
-   {
-      case 1:
-         if (sentido == ARRIBA){output_high(E1_UP); output_low(E1_DOWN);lcd_gotoxy(10,1); printf(lcd_putc,"M:U");}
-         else if (sentido == ABAJO) {output_high(E1_DOWN); output_low(E1_UP);lcd_gotoxy(10,1); printf(lcd_putc,"M:D");}
-         else if (sentido == PARO) {output_low(E1_DOWN); output_low(E1_UP);lcd_gotoxy(10,1); printf(lcd_putc,"M:P");}
-      break;
-      
-      case 2:
-         if (sentido == ARRIBA){output_high(E2_UP); output_low(E2_DOWN);lcd_gotoxy(1,2); printf(lcd_putc,"E2: SUBIENDO    ");}
-         else if (sentido == ABAJO) {output_high(E2_DOWN); output_low(E2_UP);lcd_gotoxy(1,2); printf(lcd_putc,"E2: BAJANDO     ");}
-         else if (sentido == PARO) {output_low(E2_DOWN); output_low(E2_UP); lcd_gotoxy(1,2); printf(lcd_putc,"E2: AAAAA        ");}
-      break;
-      
-      default:
-      break;
-   }
-}
-
-void control_pwm (int1 motor_flag) 
-{
-   int16 pwm;
+void control_pwm (int1 motor_flag, int8 *flag_motor_mec) 
+{ 
    if (motor_flag)
    {
-      pwm=680;
-      set_pwm1_duty(pwm);
+      set_pwm1_duty(680); // Revisar si es la velocidad correcta para el mecanismo======================================================
       lcd_gotoxy(6,1); printf(lcd_putc,"M:1");
+      *flag_motor_mec = 1;
       
    }
    else
    {
-      pwm=0;
-      set_pwm1_duty(pwm);
+      set_pwm1_duty(0);
       lcd_gotoxy(6,1); printf(lcd_putc,"M:0");
+      *flag_motor_mec = 0;
    }
 }
 
 void lectura_serial (int8 *inicio_flag, int8 *paro_flag, int8 *tiempo, int8 *prendas)
 {
-//!         char datos [];
-//!         int i = 0;
          *inicio_flag = 1;
          *paro_flag = 0;
          *tiempo = 20;
          *prendas = 4;
-         
-//!         while (!kbhit);
-//!         
-//!         while(kbhit)
-//!         {
-//!            datos[i] = getc();
-//!         }
-//!         
-//!         switch(dato)
-//!         {
-//!            case '1':
-//!               output_high(LED);
-//!            break;
-//!            
-//!            case '0':
-//!               output_low(LED);
-//!            break;
-//!            
-//!            default:
-//!            break;
-//!         }
-      
 }
 
 
