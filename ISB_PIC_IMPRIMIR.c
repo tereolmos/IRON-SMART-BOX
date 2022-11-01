@@ -12,14 +12,14 @@
 #define INFRAROJO PIN_B0
 #define FIN_E1_UP PIN_B2
 #define FIN_E1_DOWN PIN_B3
-#define FIN_E2_UP PIN_B4
-#define FIN_E2_DOWN PIN_B5
+#define FIN_E2_UP PIN_B4// inecesario
+#define FIN_E2_DOWN PIN_B5 // inecesario
 
 //SALIDAS
 #define E1_UP PIN_B6
 #define E1_DOWN PIN_B7
-#define E2_UP PIN_C0
-#define E2_DOWN PIN_C1
+#define E2_UP PIN_C0 // inecesario
+#define E2_DOWN PIN_C1 // inecesario
 #define RESISTENCIA PIN_C5
 
 //AUXILIARES
@@ -29,7 +29,7 @@
 #define ON 1
 #define OFF 0
 #define CARGA 3036
-#define TEM_DESEADA 32
+#define TEM_DESEADA 31
 
 int1 un_segundo = 0;
 int1 comenzar_conteo = 0;
@@ -46,7 +46,6 @@ void interrupcion ()
 //PROTOTIPOS DE FUNCIONES
 float medir_temperatura(void);
 void control_temperatura (void); 
-void revisar_infrarojo (void);
 void revisar_fines_carrera (void);
 void start_elevadores (void);
 void UPDOWN (int8,int8);
@@ -69,7 +68,6 @@ void main ()
    
    // Comenzar con los motores en PARO=========================================
    UPDOWN (1,PARO);
-   UPDOWN (2,PARO);
    lcd_putc('\f');
    
    //Set del módulo CCP para pwm del motor del mecanismo ======================
@@ -98,35 +96,39 @@ void main ()
          control_temperatura();
          while(n_prendas_actual < n_prendas_total)
          {
-            if  (input(INFRAROJO)== 0) 
+            lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
+            if  (input(INFRAROJO)== 1)//No hay prenda detectada
             {
+               lcd_gotoxy(1,2); printf(lcd_putc,"P:0");
                control_pwm (ON); //Se enciende el motor del mecanismo giratorio
-               while (input(INFRAROJO)== 1);//Si no hay prenda detectada no hace NADA ******Agregar mantenimiento de temperatura******
+               while (input(INFRAROJO)== 1);//Si no hay prenda detectada no hace NADA ******Agregar mantenimiento de temperatura******=================
+               lcd_gotoxy(1,2); printf(lcd_putc,"P:1");// el ciclo se rompe cuando detecta la pieza 
                control_pwm (OFF); //Se apaga el motor del mecanismo giratorio
                UPDOWN (1,ARRIBA);
-               UPDOWN (2,ARRIBA);
                comenzar_conteo = 1;
-               lcd_gotoxy(1,1); printf(lcd_putc,"\fTIEMPO A: %i\nTIEMPO D:%i",t_actual,tiempo);
+       
                while (t_actual/2 < tiempo)
                {
-                  lcd_gotoxy(10,1); printf(lcd_putc,"%i ",(int)t_actual/2);
-                  lcd_gotoxy(10,2); printf(lcd_putc,"%i ",tiempo);
+                  lcd_gotoxy(16,2); printf(lcd_putc,"%i ",(int)t_actual/2);
                   revisar_fines_carrera ();
                }
+               
+               UPDOWN (1,PARO);
+               //Agregar que regresen a la posicion inicial=============================================================================================
                t_actual = 0;
                comenzar_conteo = 0;
-               UPDOWN (1,PARO);
-               UPDOWN (2,PARO);
                n_prendas_actual++;
-               lcd_gotoxy(1,1); printf(lcd_putc,"\fFIN DE PLANCHADO\nPRENDA: %i",n_prendas_actual);
+               //lcd_gotoxy(1,1); printf(lcd_putc,"\fFIN DE PLANCHADO\nPRENDA: %i",n_prendas_actual);
+               lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
                delay_ms(1000); //La prenda avanza un poquito para ya no ser detectada por el infrarojo
                control_temperatura();
                control_pwm (ON);
             }//if  (input(INFRAROJO)== 0) 
          }//while(n_prendas_actual < n_prendas_total)
          n_prendas_actual = 0;
-         lcd_gotoxy(1,1); printf(lcd_putc,"\fEJECUTE PRENDAS = 0");
-         delay_ms(5000);
+         lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
+         
+         
          
       }//if(start == 1)
    } //while (TRUE)
@@ -137,19 +139,19 @@ float medir_temperatura()
    signed int16 raw_temp;
    float temp;
    
-   lcd_gotoxy(1,2);
-   printf(lcd_putc,"Temperatura:");
+   lcd_gotoxy(1,1);
+   printf(lcd_putc,"T:");
    
    if (ds18b20_read(&raw_temp))
    {
       temp = (float)raw_temp/16;
-      lcd_gotoxy(13,2);
-      printf(lcd_putc,"%.1f C", temp);  
+      lcd_gotoxy(3,1);
+      printf(lcd_putc,"%i", (int)temp);  
    }
    else
    {
-      lcd_gotoxy(5,2);
-      printf(lcd_putc,"Error!");
+      lcd_gotoxy(3,1);
+      printf(lcd_putc,"E");
    }
    return temp;
 }
@@ -157,49 +159,31 @@ float medir_temperatura()
 void control_temperatura () 
 {
    float temp = medir_temperatura();
-   if (temp <= TEM_DESEADA) {output_high(RESISTENCIA);} //Se enciende la resistencia
+   if (temp <= TEM_DESEADA) {output_high(RESISTENCIA); lcd_gotoxy(14,1); printf(lcd_putc,"R:1");} //Se enciende la resistencia
    while (temp <= TEM_DESEADA) //Cada segundo, mide e imprime la temperatura
    {
       if (un_segundo)
       {
          temp = medir_temperatura();
-         lcd_gotoxy(1,1); printf(lcd_putc,"Calentando...");
+         lcd_gotoxy(14,1); printf(lcd_putc,"R:1");
       }
    }
    output_low(RESISTENCIA); //Apaga la resistencia
-}
-
-void revisar_infrarojo ()
-{
-   lcd_gotoxy(1,1);
-   printf(lcd_putc,"Objeto:");
-   if (input(INFRAROJO) == 0)
-   {
-      lcd_gotoxy(8,1);
-      printf(lcd_putc,"1");
-   }
-   else
-   {
-      lcd_gotoxy(8,1);
-      printf(lcd_putc,"0");
-   }
+   lcd_gotoxy(14,1); printf(lcd_putc,"R:0");
 }
 
 void revisar_fines_carrera ()
 {
    //ELEVADOR 1
-   if (input(FIN_E1_UP) == 1){UPDOWN (1,PARO); delay_ms(500); UPDOWN (1,ABAJO);}
-   else if (input(FIN_E1_DOWN) == 1){UPDOWN (1,PARO); delay_ms(500); UPDOWN (1,ARRIBA);}
-   
-   //ELEVADOR 2
-   if (input(FIN_E2_UP) == 1){UPDOWN (2,PARO); delay_ms(500); UPDOWN (2,ABAJO);}
-   else if (input(FIN_E2_DOWN) == 1){UPDOWN (1,PARO); delay_ms(500); UPDOWN (2,ARRIBA);}
+   if (input(FIN_E1_UP) == 0){UPDOWN (1,PARO); delay_ms(500); UPDOWN (1,ABAJO);lcd_gotoxy(5,2); printf(lcd_putc,"U:1");}
+   else if (input(FIN_E1_UP) == 1){lcd_gotoxy(5,2); printf(lcd_putc,"U:0");}
+   if (input(FIN_E1_DOWN) == 0){UPDOWN (1,PARO); delay_ms(500); UPDOWN (1,ARRIBA);lcd_gotoxy(9,2); printf(lcd_putc,"D:1");}
+   else if (input(FIN_E1_DOWN) == 1){lcd_gotoxy(9,2); printf(lcd_putc,"D:0");}
 }
 
 void start_elevadores ()
 {
    if (input(FIN_E1_UP) == 0 && input(FIN_E1_DOWN) == 0){UPDOWN (1,ARRIBA);}
-   if (input(FIN_E2_UP) == 0 && input(FIN_E2_DOWN) == 0){UPDOWN (2,ARRIBA);}
 }
 
 void UPDOWN (int8 motor,int8 sentido)
@@ -208,15 +192,15 @@ void UPDOWN (int8 motor,int8 sentido)
    switch (motor)
    {
       case 1:
-         if (sentido == ARRIBA){output_high(E1_UP); output_low(E1_DOWN);lcd_gotoxy(1,1); printf(lcd_putc,"E1: SUBIENDO    ");}
-         else if (sentido == ABAJO) {output_high(E1_DOWN); output_low(E1_UP);lcd_gotoxy(1,1); printf(lcd_putc,"E1: BAJANDO     ");}
-         else if (sentido == PARO) {output_low(E1_DOWN); output_low(E1_UP);lcd_gotoxy(1,1); printf(lcd_putc,"E1: PARO        ");}
+         if (sentido == ARRIBA){output_high(E1_UP); output_low(E1_DOWN);lcd_gotoxy(10,1); printf(lcd_putc,"M:U");}
+         else if (sentido == ABAJO) {output_high(E1_DOWN); output_low(E1_UP);lcd_gotoxy(10,1); printf(lcd_putc,"M:D");}
+         else if (sentido == PARO) {output_low(E1_DOWN); output_low(E1_UP);lcd_gotoxy(10,1); printf(lcd_putc,"M:P");}
       break;
       
       case 2:
          if (sentido == ARRIBA){output_high(E2_UP); output_low(E2_DOWN);lcd_gotoxy(1,2); printf(lcd_putc,"E2: SUBIENDO    ");}
          else if (sentido == ABAJO) {output_high(E2_DOWN); output_low(E2_UP);lcd_gotoxy(1,2); printf(lcd_putc,"E2: BAJANDO     ");}
-         else if (sentido == PARO) {output_low(E2_DOWN); output_low(E2_UP); lcd_gotoxy(1,2); printf(lcd_putc,"E2: PARO        ");}
+         else if (sentido == PARO) {output_low(E2_DOWN); output_low(E2_UP); lcd_gotoxy(1,2); printf(lcd_putc,"E2: AAAAA        ");}
       break;
       
       default:
@@ -231,16 +215,14 @@ void control_pwm (int1 motor_flag)
    {
       pwm=680;
       set_pwm1_duty(pwm);
-      lcd_gotoxy(1,1);
-      printf(lcd_putc,"\fMOTOR: ENCENDIDO");
+      lcd_gotoxy(6,1); printf(lcd_putc,"M:1");
       
    }
    else
    {
       pwm=0;
       set_pwm1_duty(pwm);
-      lcd_gotoxy(1,1);
-      printf(lcd_putc,"MOTOR: ALTO     ");
+      lcd_gotoxy(6,1); printf(lcd_putc,"M:0");
    }
 }
 
@@ -250,7 +232,7 @@ void lectura_serial (int8 *inicio_flag, int8 *paro_flag, int8 *tiempo, int8 *pre
 //!         int i = 0;
          *inicio_flag = 1;
          *paro_flag = 0;
-         *tiempo = 15;
+         *tiempo = 20;
          *prendas = 4;
          
 //!         while (!kbhit);
