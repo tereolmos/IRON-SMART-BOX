@@ -25,7 +25,7 @@
 #define ON 1
 #define OFF 0
 #define CARGA 3036
-#define TEM_DESEADA 31
+#define TEM_DESEADA 29
 
 int1 un_segundo = 0;
 int1 comenzar_conteo = 0;
@@ -57,7 +57,6 @@ void main ()
    int8 n_prendas_total = 0; // #Prendas colocadas por el usuario
    int8 n_prendas_actual = 0; // #Prendas ya planchadas
    int8 tiempo = 0; // Tiempo de planchado por prenda deseado
-   //int inicializado = 0; // Bandera para el control de la temperatura (solo se usa al inicio), revisar si se necesita, que el while de control se rompa cuando detecta un objeto solo cuando inicializado = 1
    int8 flag_motor_mec = 0; // Bandera estado del motor del mecanismo
    int8 flag_motor_elev = 0; // Bandera estado del motor del elevador
    
@@ -117,19 +116,38 @@ void main ()
                   //agregar mantenimiento de temperatura?
                }
                UPDOWN (PARO, &flag_motor_elev);
-               //Agregar que regresen a la posicion inicial=============================================================================================
                t_actual = 0;
                comenzar_conteo = 0;
                n_prendas_actual++;
-               //lcd_gotoxy(1,1); printf(lcd_putc,"\fFIN DE PLANCHADO\nPRENDA: %i",n_prendas_actual);
                lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
                delay_ms(1000); //La prenda avanza un poquito para ya no ser detectada por el infrarojo==================================================
                control_temperatura (&flag_motor_mec, &flag_motor_elev);
-               control_pwm (ON, &flag_motor_mec);
+               //control_pwm (ON, &flag_motor_mec);//ES NECESARIO????????
             }//if  (input(INFRAROJO)== 0) 
+            
+            
          }//while(n_prendas_actual < n_prendas_total)
-         n_prendas_actual = 0;
-         lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
+         
+         control_pwm (OFF, &flag_motor_mec); //Se apaga el motor del mecanismo giratorio
+         //Agregar que regresen a la posicion inicial=============================================================================================
+         UPDOWN (ABAJO, &flag_motor_elev);
+         printf(lcd_putc,"\f   BAJANDO...");
+         while (input(FIN_E1_DOWN) == 1);//mientras el elevador no haya llegado hasta abajo
+         
+         UPDOWN (PARO, &flag_motor_elev);
+         printf(lcd_putc,"\f     PROCESO    \n    TERMINADO   ");//en espera de otro ciclo de planchado (se tiene que agregar un 1 nuevamente)==========
+         while(n_prendas_actual >= n_prendas_total)//agregar break si llega nuevo bit de inicio
+         {
+            //lectura_serial();
+            //mantenimineto de temperatura?
+         }
+         
+         
+         //===================================================NO QUITAR==================================================
+         //n_prendas_actual = 0;
+         //lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
+         //==============================================================================================================
+         
       }//if(start == 1)
    } //while (TRUE)
 } 
@@ -216,8 +234,8 @@ void lectura_serial (int8 *inicio_flag, int8 *paro_flag, int8 *tiempo, int8 *pre
 {
          *inicio_flag = 1;
          *paro_flag = 0;
-         *tiempo = 20;
-         *prendas = 4;
+         *tiempo = 30;
+         *prendas = 2;
 }
 
 
