@@ -17,6 +17,7 @@
 #define E1_UP PIN_B6
 #define E1_DOWN PIN_B7
 #define RESISTENCIA PIN_C5
+#define MOTOR_MEC PIN_A1
 
 //AUXILIARES
 #define ARRIBA 0
@@ -25,7 +26,7 @@
 #define ON 1
 #define OFF 0
 #define CARGA 3036
-#define TEM_DESEADA 29
+#define TEM_DESEADA 31
 
 int1 un_segundo = 0;
 int1 comenzar_conteo = 0;
@@ -74,11 +75,6 @@ void main ()
    UPDOWN (PARO, &flag_motor_elev);
    lcd_putc('\f');
    
-   //Set del módulo CCP para pwm del motor del mecanismo ======================
-   setup_timer_2(t2_div_by_4,249,1);
-   setup_ccp1(ccp_pwm);
-   set_pwm1_duty(0);
-   
    //Set de las interrupciones (Timer 1 - 0.5s)================================
    setup_timer_1(T1_INTERNAL|T1_DIV_BY_8 ); //Contador asíncrono con prescaler de 1
    enable_interrupts (INT_TIMER1);
@@ -119,6 +115,9 @@ void main ()
                t_actual = 0;
                comenzar_conteo = 0;
                n_prendas_actual++;
+               
+               //regresar los cepillos arriba===================================================
+               
                lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
                delay_ms(1000); //La prenda avanza un poquito para ya no ser detectada por el infrarojo==================================================
                control_temperatura (&flag_motor_mec, &flag_motor_elev);
@@ -217,14 +216,14 @@ void control_pwm (int1 motor_flag, int8 *flag_motor_mec)
 { 
    if (motor_flag)
    {
-      set_pwm1_duty(680); // Revisar si es la velocidad correcta para el mecanismo======================================================
+      output_high(MOTOR_MEC);
       lcd_gotoxy(6,1); printf(lcd_putc,"M:1");
       *flag_motor_mec = 1;
       
    }
    else
    {
-      set_pwm1_duty(0);
+      output_low(MOTOR_MEC);
       lcd_gotoxy(6,1); printf(lcd_putc,"M:0");
       *flag_motor_mec = 0;
    }

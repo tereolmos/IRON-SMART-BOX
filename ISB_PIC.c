@@ -6,7 +6,7 @@
 
 //LIBRERÍAS
 #include <LCD_D.c> // LCD en el puerto D
-#include <DS18B20.h> // Sensor de temperatura en B1
+#include <DS18B20.h> // Sens  or de temperatura en B1
 
 // ENTRADAS
 #define INFRAROJO PIN_B0
@@ -29,7 +29,7 @@
 #define ON 1
 #define OFF 0
 #define CARGA 3036
-#define TEM_DESEADA 32
+#define TEM_DESEADA 31
 
 int1 un_segundo = 0;
 int1 comenzar_conteo = 0;
