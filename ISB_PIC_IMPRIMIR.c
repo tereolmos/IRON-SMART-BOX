@@ -44,6 +44,7 @@ void interrupcion ()
 float medir_temperatura(void);
 void control_temperatura (int8 *, int8 *);
 void revisar_fines_carrera (int8 *);
+void elevador_arriba (int8 *);
 void UPDOWN (int8, int8 *);
 void control_pwm (int1, int8 *);
 void lectura_serial (int8 *, int8 *, int8 *, int8 *);
@@ -81,6 +82,9 @@ void main ()
    enable_interrupts (GLOBAL);
    set_timer1(CARGA);
    
+   //Comenzar con el elevador arriba===========================================
+   elevador_arriba (&flag_motor_elev);
+   
    
    while (TRUE)
    {
@@ -114,13 +118,12 @@ void main ()
                UPDOWN (PARO, &flag_motor_elev);
                t_actual = 0;
                comenzar_conteo = 0;
-               n_prendas_actual++;
-               
-               //regresar los cepillos arriba===================================================
-               
+               n_prendas_actual++;               
                lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
                delay_ms(1000); //La prenda avanza un poquito para ya no ser detectada por el infrarojo==================================================
                control_temperatura (&flag_motor_mec, &flag_motor_elev);
+               elevador_arriba (&flag_motor_elev); // regresar cepillo arriba
+               
                //control_pwm (ON, &flag_motor_mec);//ES NECESARIO????????
             }//if  (input(INFRAROJO)== 0) 
             
@@ -129,12 +132,15 @@ void main ()
          
          control_pwm (OFF, &flag_motor_mec); //Se apaga el motor del mecanismo giratorio
          //Agregar que regresen a la posicion inicial=============================================================================================
-         UPDOWN (ABAJO, &flag_motor_elev);
-         printf(lcd_putc,"\f   BAJANDO...");
-         while (input(FIN_E1_DOWN) == 1);//mientras el elevador no haya llegado hasta abajo
+         //UPDOWN (ABAJO, &flag_motor_elev);
          
-         UPDOWN (PARO, &flag_motor_elev);
+         printf(lcd_putc,"\f   SUBIENDO...");
+         elevador_arriba (&flag_motor_elev);
+         //while (input(FIN_E1_DOWN) == 1);//mientras el elevador no haya llegado hasta abajo
+         
+         //UPDOWN (PARO, &flag_motor_elev);
          printf(lcd_putc,"\f     PROCESO    \n    TERMINADO   ");//en espera de otro ciclo de planchado (se tiene que agregar un 1 nuevamente)==========
+         
          while(n_prendas_actual >= n_prendas_total)//agregar break si llega nuevo bit de inicio
          {
             //lectura_serial();
@@ -205,6 +211,15 @@ void revisar_fines_carrera (int8 *flag_motor_elev)
    else if (input(FIN_E1_DOWN) == 1){lcd_gotoxy(9,2); printf(lcd_putc,"D:0");}
 }
 
+void elevador_arriba (int8 *flag_motor_elev)
+{
+   while (input(FIN_E1_UP) == 1) //mientras el elevador no esté hasta arriba
+   {
+      UPDOWN (ARRIBA, flag_motor_elev); //subir
+   }
+   UPDOWN (PARO, flag_motor_elev); delay_ms(100); 
+}
+
 void UPDOWN (int8 sentido, int8 *flag_motor_elev)
 {
    if (sentido == ARRIBA){output_high(E1_UP); output_low(E1_DOWN); *flag_motor_elev = 1; lcd_gotoxy(10,1); printf(lcd_putc,"M:U");}
@@ -233,7 +248,7 @@ void lectura_serial (int8 *inicio_flag, int8 *paro_flag, int8 *tiempo, int8 *pre
 {
          *inicio_flag = 1;
          *paro_flag = 0;
-         *tiempo = 30;
+         *tiempo = 32;
          *prendas = 2;
 }
 
