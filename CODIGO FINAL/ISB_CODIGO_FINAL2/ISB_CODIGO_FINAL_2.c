@@ -36,8 +36,10 @@ int8 t_actual = 0;
 
 // Variables globales para interrupción de recepción de datos
 char start = '0', t1 = '0', t2 = '0', prendas = '0';
+
 //Variables para enviar a LABVIEW
 int8 temp_lv, n_pren_plan = 0, final = 0;
+
 #INT_TIMER1
 void interrupcion ()//que se detenga si start=0
 {
@@ -61,7 +63,7 @@ void interrupcion_RDA ()
 float medir_temperatura(void);
 void control_temperatura (int8 *, int8 *);
 void revisar_fines_carrera (int8 *);
-void elevador_arriba (int8 *);
+void elevador_arriba (int8 *,int *);
 void UPDOWN (int8, int8 *);
 void control_pwm (int1, int8 *);
 void informacion_enteros (int *, int8 *);
@@ -70,6 +72,8 @@ void detener_todo (int8 *, int8 *);
 void delay_revisar_start (int, int8 *, int8 *);
 void cambio_nivel ();
 void enviar_labview ();
+void basicos (int8 *, int8 *);
+void control_plancha (int1);
 
 
 void main ()
@@ -104,7 +108,7 @@ void main ()
    enable_interrupts(INT_RDA); //Habilitacion de la interrupcion de transmision
    
    //Comenzar con el elevador arriba===========================================
-   elevador_arriba (&flag_motor_elev);
+   elevador_arriba (&flag_motor_elev, &flag_motor_mec);
    
    //Mantener el pin de control de niveles en bajo
    output_low(NIVELES_VAPOR);
@@ -112,12 +116,12 @@ void main ()
    
    while (TRUE)
    {
-      //informacion_enteros (&tiempo, &n_prendas_total);
-      
-      if(start == '1') // Si se presionó el botón de inicio
+            
+      if(start == '1') // Si se presionó el botón de inicio en LABVIEW
       {
-         informacion_enteros (&tiempo, &n_prendas_total);
-         control_temperatura (&flag_motor_mec, &flag_motor_elev); // Se realiza la medicion de temperatura cada segundo hasta llegar al set point
+         informacion_enteros (&tiempo, &n_prendas_total); //Convierte tiempo y numero de prendas deseadas a número entero
+         control_plancha(ON); //Enciende la plancha
+         control_temperatura (&flag_motor_mec, &flag_motor_elev); // Se realiza la medicion de temperatura cada segundo hasta llegar al set point (Espera mientras comienza a salir el vapor)
          while(n_prendas_actual < n_prendas_total)
          {
             lcd_gotoxy(13,2); printf(lcd_putc,"#:%i",n_prendas_actual);
@@ -125,23 +129,23 @@ void main ()
             {
                lcd_gotoxy(1,2); printf(lcd_putc,"P:0");
                control_pwm (ON, &flag_motor_mec); //Se enciende el motor del mecanismo giratorio
-               while (input(INFRAROJO)== 1) //Mientras no haya prenda detectada, solo se encarga de mantener la temperatura
+               while (input(INFRAROJO)== 1) //Mientras no haya prenda detectada, solo se encarga de enviar datos a labview y revisar paro
                {
-                  control_temperatura (&flag_motor_mec, &flag_motor_elev);
+                  basicos(&flag_motor_mec, &flag_motor_elev);
                }
                lcd_gotoxy(1,2); printf(lcd_putc,"P:1");// el ciclo se rompe cuando detecta la pieza 
                control_pwm (OFF, &flag_motor_mec); //Se apaga el motor del mecanismo giratorio
-               UPDOWN (ABAJO, &flag_motor_elev);
+               UPDOWN (ABAJO, &flag_motor_elev);//El elevador comienza a bajar
                comenzar_conteo = 1;
        
-               while (t_actual/2 < tiempo)
-               {
-                  if (start == '0'){detener_todo (&flag_motor_elev, &flag_motor_mec);} //es necesario? porque está dentro dee control temp
+               while (t_actual/2 < tiempo) //UP & DOWN del elevador por el tiempo deseado
+               {   
+                  basicos(&flag_motor_mec, &flag_motor_elev); //enviar datos a labview y revisar paro
                   lcd_gotoxy(16,2); printf(lcd_putc,"%i ",(int)t_actual/2);
                   revisar_fines_carrera (&flag_motor_elev);
-                  control_temperatura (&flag_motor_mec, &flag_motor_elev);
                }
-               UPDOWN (PARO, &flag_motor_elev);
+               //UPDOWN (PARO, &flag_motor_elev); //Detiene el elevador
+               elevador_arriba (&flag_motor_elev, &flag_motor_mec); // regresar cepillo arriba
                t_actual = 0;
                comenzar_conteo = 0;
                n_prendas_actual++;               
@@ -149,20 +153,19 @@ void main ()
                n_pren_plan = n_prendas_actual;
                enviar_labview(); //Enviar datos a LABVIEW
                control_pwm (ON, &flag_motor_mec);
-               delay_revisar_start (4, &flag_motor_elev, &flag_motor_mec); //La prenda avanza 1 seg para ya no ser detectada por el infrarrojo, revisando el start
-//!               !!!!!!!!!!!!!!!!!!!!
-               //Si avanza??? porque no veo una activación del mecanismo
-//!               !!!!!!!!!!!!!!!!!!!!
-               control_temperatura (&flag_motor_mec, &flag_motor_elev);
-               elevador_arriba (&flag_motor_elev); // regresar cepillo arriba
+               delay_revisar_start (8, &flag_motor_elev, &flag_motor_mec); //La prenda avanza 2 seg para ya no ser detectada por el infrarrojo, revisando el start
+               
+               //elevador_arriba (&flag_motor_elev, &flag_motor_mec); // regresar cepillo arriba
+               basicos(&flag_motor_mec, &flag_motor_elev); //enviar datos a labview y revisar paro
 
             }//if  (input(INFRAROJO)== 0) 
          }//while(n_prendas_actual < n_prendas_total)
          control_pwm (ON, &flag_motor_mec); //Se enciende el motor del mecanismo giratorio
-         delay_ms(2000);//Para que saque la última prenda
-         control_pwm (OFF, &flag_motor_mec); //Se apaga el motor del mecanismo giratorio        
+         delay_revisar_start (8, &flag_motor_elev, &flag_motor_mec); //La prenda avanza 2 seg para ya no ser detectada por el infrarrojo, revisando el start
+         control_pwm (OFF, &flag_motor_mec); //Se apaga el motor del mecanismo giratorio 
+         control_plancha(OFF); //Apaga la plancha
          printf(lcd_putc,"\f   SUBIENDO...");
-         elevador_arriba (&flag_motor_elev);
+         elevador_arriba (&flag_motor_elev, &flag_motor_mec);// Creo q ya no es necesario
          printf(lcd_putc,"\f     PROCESO    \n    TERMINADO   ");//en espera de otro ciclo de planchado (se tiene que agregar un 1 nuevamente)==========
          final = 1;
          enviar_labview(); //Enviar datos a LABVIEW
@@ -199,17 +202,7 @@ void main ()
          //==============================================================================================================
          
       }//if(start == 1)
-//!
-//!
-//!
-//!   output_low(RESISTENCIA); 
-//!   delay_ms(15000);
-//!   lcd_gotoxy(1,1);
-//!   printf(lcd_putc,"ON ");
-//!   output_high(RESISTENCIA); 
-//!   lcd_gotoxy(1,1);
-//!   printf(lcd_putc,"OFF");
-//!   delay_ms(5000);
+
    } //while (TRUE)
 } 
 
@@ -240,7 +233,6 @@ void control_temperatura (int8 *flag_motor_mec, int8 *flag_motor_elev)
    float temp = medir_temperatura(); 
    temp_lv = temp;
    enviar_labview(); //Enviar datos a LABVIEW
-   if (temp <= TEM_DESEADA) {output_low(RESISTENCIA); delay_ms(500); cambio_nivel (); lcd_gotoxy(14,1); printf(lcd_putc,"R:1");} //Se enciende la resistencia
    while (temp <= TEM_DESEADA) //Cada segundo, mide e imprime la temperatura
    {
       if (un_segundo)
@@ -248,7 +240,6 @@ void control_temperatura (int8 *flag_motor_mec, int8 *flag_motor_elev)
          temp = medir_temperatura();
          temp_lv = temp;
          enviar_labview();
-         //lcd_gotoxy(14,1); printf(lcd_putc,"R:1");
       }
       if (input(INFRAROJO)== 0 && *flag_motor_mec==1) //Si se detectó un objeto y está funcionando el motor del mecanismo
       {  
@@ -263,8 +254,27 @@ void control_temperatura (int8 *flag_motor_mec, int8 *flag_motor_elev)
          detener_todo (&flag_motor_elev, &flag_motor_mec);
       }
    }
-   output_high(RESISTENCIA); //Apaga la resistencia
-   lcd_gotoxy(14,1); printf(lcd_putc,"R:0");
+
+}
+
+void control_plancha (int1 estado)
+{
+   if (estado == ON){output_low(RESISTENCIA); delay_ms(500); cambio_nivel ();lcd_gotoxy(14,1); printf(lcd_putc,"R:1");}
+   else if (estado == OFF){output_low(RESISTENCIA);lcd_gotoxy(14,1); printf(lcd_putc,"R:0");}
+   
+}
+
+void basicos (int8 *flag_motor_mec, int8 *flag_motor_elev) 
+{
+      if (un_segundo)
+      {
+         temp_lv = medir_temperatura();
+         enviar_labview();
+      }
+      if(start == '0')
+      {
+         detener_todo (&flag_motor_elev, &flag_motor_mec);
+      }
 }
 
 void revisar_fines_carrera (int8 *flag_motor_elev)
@@ -275,13 +285,14 @@ void revisar_fines_carrera (int8 *flag_motor_elev)
    else if (input(FIN_E1_DOWN) == 1){lcd_gotoxy(9,2); printf(lcd_putc,"D:0");}
 }
 
-void elevador_arriba (int8 *flag_motor_elev)
+void elevador_arriba (int8 *flag_motor_elev,int8 *flag_motor_mec)
 {
    UPDOWN (ARRIBA, flag_motor_elev); //subir
    while (input(FIN_E1_UP) == 1) 
    {
-      if(start == '0'){UPDOWN (PARO, flag_motor_elev);}
-      else if(start == '1'){UPDOWN (ARRIBA, flag_motor_elev);}
+      //if(start == '0'){UPDOWN (PARO, flag_motor_elev);}
+      basicos(&flag_motor_mec, &flag_motor_elev); //enviar datos a labview y revisar paro
+      if (start == '1'){UPDOWN (ARRIBA, flag_motor_elev);}
    }//ciclado mientras el elevador no esté hasta arriba
    UPDOWN (PARO, flag_motor_elev); delay_ms(100); 
 }
@@ -333,9 +344,11 @@ void informacion_enteros (int *tiempo, int8 *n_prendas_total)
 void detener_todo (int8 *flag_motor_elev, int8 *flag_motor_mec)
 {
    int1 bandera_elevador_aux = 0;//Saber si el elevador estaba funcionando para detener el conteo de los segundos
+   int1 bandera_mecanismo_aux = 0;//Saber si el mecanismo estaba funcionando
+   
    if (*flag_motor_elev == 1){bandera_elevador_aux = 1;}
-   output_high(RESISTENCIA); //Apaga la resistencia
-   lcd_gotoxy(14,1); printf(lcd_putc,"R:0");
+   if (*flag_motor_mec == 1){bandera_mecanismo_aux = 1;}
+   control_plancha(OFF); //Apaga la plancha
    UPDOWN (PARO, flag_motor_elev); //Detener el elevador
    control_pwm (OFF, flag_motor_mec); //Detener motor de la banda
    comenzar_conteo = 0;//Detiene el conteo mientras start = 0
@@ -345,6 +358,8 @@ void detener_todo (int8 *flag_motor_elev, int8 *flag_motor_mec)
       
    }
    if (bandera_elevador_aux){comenzar_conteo = 1;} //Continúa con el conteo
+   if (bandera_mecanismo_aux){control_pwm (ON, &flag_motor_mec);} //Encender nuevamente el mecanismo
+   control_plancha(ON);//Enciende de nuevo la plancha 
    
 }
 
